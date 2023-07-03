@@ -11,13 +11,26 @@ using Dates
     x::Int
 end
 
-struct SpriteType
+struct Sprite
     mask::Matrix{Bool}
     color::Vector{Float64}
 end
 
+struct Logic
+    #proof of concept, need a DSL here
+    #direction is a vector with two components 
+    yspeed :: Float64	
+    xspeed :: Float64
+end 
+
+struct Typ
+    sprite_types:: Vector{Sprite}
+    logic :: Logic
+end 
+
 struct Object
-    sprite_index :: Int  
+    type_index :: Int  
+    sprite_index :: Int
     pos :: Position
 end 
 
@@ -123,17 +136,17 @@ function draw(H, W, objs, sprites)
     canvas = zeros(Float64, 3, H, W)
 
     for obj::Object in objs 
-        sprite_index = obj.sprite_index
-        sprite_type = sprites[sprite_index]
+        typ = types[obj.type_index]
+        sprite = typ[obj.sprite_index]
 
-        sprite_height, sprite_width = size(sprite_type.mask)
+        sprite_height, sprite_width = size(sprite.mask)
 
         for i in 1:sprite_height, j in 1:sprite_width
-            if sprite_type.mask[i,j]
+            if sprite.mask[i,j]
                 offy = obj.pos.y+i-1
                 offx = obj.pos.x+j-1
                 if 0 < offy <= size(canvas,2) && 0 < offx <= size(canvas,3)
-                    @inbounds canvas[:, offy,offx] = sprite_type.color
+                    @inbounds canvas[:, offy,offx] = sprite.color
                 end
             end
         end
@@ -150,26 +163,26 @@ end
 
 module Model
 using Gen
-import ..Position, ..SpriteType, ..Object, ..draw, ..image_likelihood, ..bernoulli_2d, ..rgb_dist, ..uniform_position, ..uniform_drift_position
+import ..Position, ..Sprite, ..Typ, ..Object, ..draw, ..image_likelihood, ..bernoulli_2d, ..rgb_dist, ..uniform_position, ..uniform_drift_position
 
-@gen (static) function obj_dynamics(obj::Object)
+@gen (static) function obj_dynamics(obj::Object) 
     pos ~ uniform_drift_position(obj.pos,2);
-    return Object(obj.sprite_index, pos)
+    return Object(obj.type_index, obj.sprite_index, pos)
 end
 
 all_obj_dynamics = Map(obj_dynamics)
 
 struct State
     objs::Vector{Object}
-    sprites::Vector{SpriteType}
+    types::Vector{Typ}	
 end
 
 @gen (static) function dynamics_and_render(t::Int, prev_state::State, canvas_height, canvas_width, var)
     objs ~ all_obj_dynamics(prev_state.objs)
-    sprites = prev_state.sprites 
-    rendered = draw(canvas_height, canvas_width, objs, sprites)
+    types = prev_state.types
+    rendered = draw(canvas_height, canvas_width, objs, types)
     observed_image ~ image_likelihood(rendered, var)
-    return State(objs, sprites)
+    return State(objs, types)
 end
 
 unfold_step = Unfold(dynamics_and_render)
@@ -177,25 +190,45 @@ unfold_step = Unfold(dynamics_and_render)
 
  
 @gen (static) function make_object(i, H, W)
-    NUM_SPRITE_TYPES = 4
-    
-    sprite_index ~ uniform_discrete(1, NUM_SPRITE_TYPES) 
+    NUM_TYPES = 4
+    type_index ~ uniform_discrete(1, NUM_TYPES) 
+    sprite_index ~ uniform_discrete(1, length(types[type_index].sprites))
     #pos ~ uniform_drift_position(Position(0,0), 2) #never samping from this? why was using this not wrong?? 0.2? figure this out                                                                                      
     pos ~ uniform_position(H, W) 
 
-    return Object(sprite_index, pos)
+    return Object(type_index, sprite_index, pos)
 end
 
-@gen (static) function make_type(i, H, W) 
+@gen (static) function make_type(i, H, W)
+    num_sprites ~ poisson(2) 
+
+    #am I doing this right? 
+    sprites = Sprite[]#Vector{Sprite}
+    sprites = {:sprites} ~ make_sprites(num_sprites, H, W) #done with the map below 
+
+    logic ~ make_logic()
+
+    return Typ(sprites, logic)
+end 
+
+#proof of concept placeholder 
+@gen (static) function make_logic()
+    yspeed ~ uniform(-1,1)
+    xspeed ~ uniform(-1,1)
+    return Logic(yspeed, xspeed)
+end 
+
+@gen (static) function make_sprite(i, H, W) 
     width ~ uniform_discrete(1,W)
     height ~ uniform_discrete(1,H)
     shape ~ bernoulli_2d(0.5, height, width)
     color ~ rgb_dist()
-    return SpriteType(shape, color)
+    return Sprite(shape, color)
 end
 
 make_objects = Map(make_object)
-make_sprites = Map(make_type)
+make_types = Map(make_type)
+make_sprites = Map(make_sprite)
 
 # #testing
 # testobjs = make_objects(collect(1:5), [10 for _ in 1:5], [20 for _ in 1:5])
@@ -205,15 +238,15 @@ make_sprites = Map(make_type)
 
 
 @gen function init_model(H,W,var)
-    NUM_SPRITE_TYPES = 4
+    NUM_TYPES = 4
     N ~ poisson(7)
     objs = {:init_objs} ~  make_objects(collect(1:N), [H for _ in 1:N], [W for _ in 1:N])
-    sprites = {:init_sprites} ~ make_sprites(collect(1:NUM_SPRITE_TYPES), [H for _ in 1:NUM_SPRITE_TYPES], [W for _ in 1:NUM_SPRITE_TYPES]) 
+    types = {:init_types} ~ make_types(collect(1:NUM_TYPES), [H for _ in 1:NUM_TYPES], [W for _ in 1:NUM_TYPES])
 
-    rendered = draw(H, W, objs, sprites)
+    rendered = draw(H, W, objs, types)
     {:observed_image} ~ image_likelihood(rendered, var)
 
-    State(objs, sprites) 
+    State(objs, types) 
 end
 
 # #testing
