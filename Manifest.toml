@@ -349,9 +349,9 @@ version = "0.5.0"
 
 [[deps.Gen]]
 deps = ["Compat", "DataStructures", "Distributions", "ForwardDiff", "FunctionalCollections", "JSON", "LinearAlgebra", "MacroTools", "Parameters", "Random", "ReverseDiff", "SpecialFunctions"]
-git-tree-sha1 = "d9cd04946d080d3c2cf6e99ec2df49ae4b02eac7"
+git-tree-sha1 = "2275d3ac200a97f9257e43ba601744aa6fb468d1"
 repo-rev = "master"
-repo-url = "https://github.com/probcomp/Gen"
+repo-url = "https://github.com/mlb2251/Gen.jl.git"
 uuid = "ea4f424c-a589-11e8-07c0-fd5c91b9da4a"
 version = "0.4.5"
 

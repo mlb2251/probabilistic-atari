@@ -72,7 +72,21 @@ as a simple first pass of object detection
 
 end 
 
+@gen function get_random_for_i(tr, i)
+    #shape things 
+    # shapei ~ uniform_discrete(1, tr[:init => :num_sprite_types])	
+    # shape = tr[:init => :init_sprites => shapei => :shape]
+    # height, width = size(shape)
+    # hi ~ uniform_discrete(1, height) 
+    # wi ~ uniform_discrete(1, width)	
 
+    #color things 
+    #colori ~ uniform_discrete(1, tr[:init => :num_sprite_types])
+    rcolorshift ~ normal(0.0, 0.1)
+    gcolorshift ~ normal(0.0, 0.1)	
+    bcolorshift ~ normal(0.0, 0.1)
+
+end 
 
 # #should do mh for each sprite separately
 # all_rand_hi_wi = Map(rand_hi_wi)
@@ -201,6 +215,28 @@ function update_detect(tr, random_choices, retval, for_args)
     (new_trace, backward_choices, weight)
 end
 
+
+function update_detect_for_i(tr, random_choices, retval, for_args)
+    #how to get i from for_arfs
+    i = for_args[1]
+
+    new_trace_choices = choicemap()
+    backward_choices = choicemap()
+    
+    rcolornew = random_choices[:rcolorshift] + tr[:init => :init_sprites => i => :color][1]
+    gcolornew = random_choices[:gcolorshift] + tr[:init => :init_sprites => i => :color][2]
+    bcolornew = random_choices[:bcolorshift] + tr[:init => :init_sprites => i => :color][3]
+
+    new_trace_choices[(:init => :init_sprites => i => :color)] = [rcolornew, gcolornew, bcolornew]	
+
+    backward_choices[:rcolorshift] = - random_choices[:rcolorshift]
+    backward_choices[:gcolorshift] = - random_choices[:gcolorshift]
+    backward_choices[:bcolorshift] = - random_choices[:bcolorshift]
+
+end 
+
+
+
 function process_first_frame_v2(frame, threshold=.05)
     #run update detect a bunch TODO 
 
@@ -220,7 +256,21 @@ function process_first_frame_v2(frame, threshold=.05)
     for num_updates in 1:100 #no clue 
         #tr = update_detect(tr, rand_hilist_wilist ,frame)
         tr, accepted = mh(tr, get_random, (), update_detect)#tr is an arg but it is assumed
+        @show tr[:init => :init_sprites => 1 => :color]
+
+        
+
+        #sprite by sprite version
+        for i in 1:tr[:init => :num_sprite_types]
+            tr, accepted = mh(tr, get_random_for_i, (i,), update_detect_for_i)#tr is an arg but it is assumed
+            
+        end
+
     end
+
+
+
+
 
     #init_obs = choicemap 
 
